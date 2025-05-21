@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Proyecto TSP - Frontend</title>
+  <!-- Carga de estilos de Leaflet y propios -->
+  <link rel="stylesheet" href="leaflet/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="map"></div>
+  
+    <!-- Controles flotantes -->
+    <div id="floating-controls">
+      <h2>Visualizador de Algoritmos TSP</h2>
+  
+      <div class="control-group">
+        <input type="file" id="file-osm">
+        <button onclick="uploadOSM()">Cargar Red (OSM)</button>
+      </div>
+      <div class="control-group">
+        <input type="file" id="file-points">
+        <button onclick="uploadPoints()">Cargar Puntos</button>
+      </div>
+      <div class="control-group">
+        <button onclick="runAlgorithm('brute')">TSP Brute Force</button>
+        <button onclick="runAlgorithm('greedy')">TSP Greedy</button>
+        <button onclick="runAlgorithm('dp')">TSP Dinámico</button>
+      </div>
+      <div class="control-group">
+        <button onclick="download()">Descargar Resultado</button>
+      </div>
+    </div>
+  
+    <script src="leaflet/leaflet.js"></script>
+    <script src="script.js"></script>
+  </body>
+  
+</html>
