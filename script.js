@@ -7,8 +7,11 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-// Capa para la malla vial, inicializada vacía
-let roadLayer = L.geoJSON().addTo(map);
+// Creamos roadLayer con filtro y estilo
+let roadLayer = L.geoJSON(null, {
+  filter: feature => feature.geometry.type === 'LineString',
+  style: () => ({ color: '#FF6600', weight: 2 })
+}).addTo(map);
 
 // Capas para puntos y rutas de algoritmo
 let pointsLayer = L.layerGroup().addTo(map);
@@ -45,8 +48,6 @@ async function uploadOSM() {
   } catch (err) {
     console.error(err);
     alert('Error cargando la malla: ' + err.message);
-  } finally {
-    // Oculta el spinner si lo usaste
   }
 }
 
