@@ -1,126 +1,151 @@
-// Inicializa el mapa centrado en Bogotá
-let map = L.map('map').setView([4.60971, -74.08175], 13);
+// 1. Punto base de la API
+const API_BASE = 'http://localhost:5000' + '/api/network'; // Cambia esto según tu configuración
 
+// 2. Inicialización del mapa y capas
+const map = L.map('map').setView([4.60971, -74.08175], 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-// Capas globales
-let roadLayer = null;
-let pointsLayer = null;
-let algorithmLayer = null;
+// Capa para la malla vial, inicializada vacía
+let roadLayer = L.geoJSON().addTo(map);
 
-// Función para cargar el archivo .osm y enviarlo al backend
-function uploadOSM() {
-  const fileInput = document.getElementById('file-osm');
-  const file = fileInput.files[0];
+// Capas para puntos y rutas de algoritmo
+let pointsLayer = L.layerGroup().addTo(map);
+let algorithmLayer = L.layerGroup().addTo(map);
+
+
+// 3. Función para cargar y pintar la malla (.osm → Graph backend → {nodes, edges})
+async function uploadOSM() {
+  const input = document.getElementById('file-osm');
+  const file = input.files[0];
   if (!file) {
-    alert("Selecciona un archivo OSM");
-    return;
+    return alert('Por favor selecciona un archivo .osm');
   }
 
-  const formData = new FormData();
-  formData.append("file", file);
+  const form = new FormData();
+  form.append('file', file);// coincide con req.files.file en el back
 
-  fetch("http://localhost:8080/api/osm", {
-    method: "POST",
-    body: formData
-  })
-    .then(res => res.json())
-    .then(geojsonData => {
-      if (roadLayer) map.removeLayer(roadLayer);
-      roadLayer = L.geoJSON(geojsonData, {
-        style: { color: '#555', weight: 4 }
-      }).addTo(map);
+  try {
+    const res = await fetch(`${API_BASE}/upload-osm`, {
+      method: 'POST',
+      body: form
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    // Convertir edges a GeoJSON
+    const meshGeoJSON = await res.json();
+
+    // Limpiar y pintar
+    roadLayer.clearLayers();
+    roadLayer.addData(meshGeoJSON);
+
+    // Ajustar vista
+    map.fitBounds(roadLayer.getBounds());
+  } catch (err) {
+    console.error(err);
+    alert('Error cargando la malla: ' + err.message);
+  } finally {
+    // Oculta el spinner si lo usaste
+  }
+}
+
+
+// 4. Función para cargar y pintar puntos
+async function uploadPoints() {
+  const input = document.getElementById('file-points');
+  const file = input.files[0];
+  if (!file) {
+    return alert('Selecciona un archivo de puntos');
+  }
+
+  const form = new FormData();
+  form.append('file', file);               // coincide con req.files.file en el back
+
+  try {
+    const res = await fetch(`${API_BASE}/points`, {
+      method: 'POST',
+      body: form
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+    // data.points: [{ id, lat, lng }], data.updatedMesh?: GeoJSON
+
+    // Pintar puntos
+    pointsLayer.clearLayers();
+    data.points.forEach(pt => {
+      L.circleMarker([pt.lat, pt.lng], { radius: 5, color: 'blue' })
+       .bindPopup(pt.id)
+       .addTo(pointsLayer);
+    });
+
+    // Si el back retorna un updatedMesh, actualiza también la malla
+    if (data.updatedMesh) {
+      roadLayer.clearLayers();
+      roadLayer.addData(data.updatedMesh);
       map.fitBounds(roadLayer.getBounds());
-      alert("Red cargada desde el backend y pintada en el mapa.");
-    })
-    .catch(err => {
-      console.error(err);
-      alert("Error al enviar el archivo OSM al backend.");
-    });
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Error cargando los puntos: ' + err.message);
+  }
 }
 
-// Función para cargar puntos y enviarlos al backend
-function uploadPoints() {
-  const fileInput = document.getElementById('file-points');
-  const file = fileInput.files[0];
-  if (!file) {
-    alert("Selecciona un archivo de puntos");
-    return;
+
+// 5. Función para ejecutar un algoritmo TSP
+async function runAlgorithm(type) {
+  if (!roadLayer.getLayers().length || !pointsLayer.getLayers().length) {
+    return alert('Debes cargar primero la malla y los puntos.');
   }
 
-  const formData = new FormData();
-  formData.append("file", file);
+  try {
+    // Limpia ruta anterior
+    algorithmLayer.clearLayers();
 
-  fetch("http://localhost:8080/api/points", {
-    method: "POST",
-    body: formData
-  })
-    .then(res => res.json())
-    .then(pointsData => {
-      if (pointsLayer) map.removeLayer(pointsLayer);
-      pointsLayer = L.layerGroup();
+    const res = await fetch(`${API_BASE}/tsp?type=${type}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      pointsData.forEach(point => {
-        const marker = L.circleMarker([point.lat, point.lng], {
-          radius: 6,
-          color: 'blue',
-          fillOpacity: 0.8
-        }).bindPopup(`Punto ID: ${point.id}`);
-        marker.addTo(pointsLayer);
-      });
+    const result = await res.json();
+    // result.path: [[lat,lng],…], result.color, result.distance, result.time
 
-      pointsLayer.addTo(map);
-      alert("Puntos cargados e integrados desde el backend.");
-    })
-    .catch(err => {
-      console.error(err);
-      alert("Error al cargar los puntos.");
-    });
-}
+    // Dibuja la ruta
+    L.polyline(result.path, { color: result.color || 'red', weight: 3 })
+     .addTo(algorithmLayer);
 
-// Función para ejecutar algoritmo y pintar la ruta
-function runAlgorithm(type) {
-  if (!roadLayer || !pointsLayer) {
-    alert("Primero debes cargar la red y los puntos.");
-    return;
+    alert(`Algoritmo ${type}: distancia ${result.distance.toFixed(2)} — tiempo ${result.time}ms`);
+  } catch (err) {
+    console.error(err);
+    alert('Error ejecutando algoritmo: ' + err.message);
   }
-
-  fetch(`http://localhost:8080/api/tsp?type=${type}`)
-    .then(res => res.json())
-    .then(result => {
-      if (algorithmLayer) map.removeLayer(algorithmLayer);
-      algorithmLayer = L.polyline(result.path, {
-        color: result.color || 'red',
-        weight: 5
-      }).addTo(map);
-      map.fitBounds(algorithmLayer.getBounds());
-
-      alert(`Algoritmo ${type} ejecutado.\nDistancia: ${result.distance} km\nTiempo: ${result.time} ms`);
-    })
-    .catch(err => {
-      console.error(err);
-      alert("Error al ejecutar el algoritmo.");
-    });
 }
 
-// Función para descargar el archivo resultante desde el backend
-function download() {
-  fetch('http://localhost:8080/api/result/download')
-    .then(res => res.blob())
-    .then(blob => {
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = "resultado.geojson";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    })
-    .catch(err => {
-      console.error(err);
-      alert("Error al descargar el archivo resultante.");
-    });
+
+// 6. Función para descargar el resultado final
+async function downloadResult() {
+  try {
+    const res = await fetch(`${API_BASE}/result/download`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'resultado.geojson';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error(err);
+    alert('Error descargando el resultado: ' + err.message);
+  }
 }
+
+// 7. Vinculación con los botones de tu HTML
+document.getElementById('btn-upload-osm').onclick     = uploadOSM;
+document.getElementById('btn-upload-points').onclick  = uploadPoints;
+document.getElementById('btn-brute').onclick          = () => runAlgorithm('brute');
+document.getElementById('btn-greedy').onclick         = () => runAlgorithm('greedy');
+document.getElementById('btn-dp').onclick             = () => runAlgorithm('dp');
+document.getElementById('btn-download').onclick       = downloadResult;
