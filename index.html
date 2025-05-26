@@ -19,8 +19,8 @@
         <button onclick="uploadOSM()">Cargar Red (OSM)</button>
       </div>
       <div class="control-group">
-        <input type="file" id="file-points">
-        <button onclick="uploadPoints()">Cargar Puntos</button>
+        <input type="file" id="file-points" accept=".tsv">
+        <button id="btn-upload-points">Cargar Puntos</button>
       </div>
       <div class="control-group">
         <button onclick="runAlgorithm('brute')">TSP Brute Force</button>

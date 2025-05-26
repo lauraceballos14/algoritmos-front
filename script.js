@@ -1,5 +1,6 @@
 // 1. Punto base de la API
-const API_BASE = 'http://localhost:5000' + '/api/network'; // Cambia esto según tu configuración
+const API_BASE = 'http://localhost:5000' + '/api/network';
+const POINTS_BASE = 'http://localhost:5000' + '/api/points';
 
 // 2. Inicialización del mapa y capas
 const map = L.map('map').setView([4.60971, -74.08175], 13);
@@ -10,7 +11,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 // Creamos roadLayer con filtro y estilo
 let roadLayer = L.geoJSON(null, {
   filter: feature => feature.geometry.type === 'LineString',
-  style: () => ({ color: '#FF6600', weight: 2 })
+  style: () => ({ color: '#FF6600', weight: 2 }) 
 }).addTo(map);
 
 // Capas para puntos y rutas de algoritmo
@@ -57,38 +58,47 @@ async function uploadPoints() {
   const input = document.getElementById('file-points');
   const file = input.files[0];
   if (!file) {
-    return alert('Selecciona un archivo de puntos');
+    return alert('Por favor selecciona un archivo .tsv');
   }
 
   const form = new FormData();
-  form.append('file', file);               // coincide con req.files.file en el back
+  form.append('file', file);// coincide con req.files.file en el back
 
   try {
-    const res = await fetch(`${API_BASE}/points`, {
+    // Llamada al endpoint que maneja la subida de puntos
+    const res = await fetch(`${POINTS_BASE}/upload-points`, {
       method: 'POST',
       body: form
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    const data = await res.json();
-    // data.points: [{ id, lat, lng }], data.updatedMesh?: GeoJSON
+    // Se asume respuesta { pints; [{id,lat,lng}], updateMesh? }
+    const { points, updateMesh } = await res.json();
 
-    // Pintar puntos
-    pointsLayer.clearLayers();
-    data.points.forEach(pt => {
-      L.circleMarker([pt.lat, pt.lng], { radius: 5, color: 'blue' })
-       .bindPopup(pt.id)
-       .addTo(pointsLayer);
-    });
-
-    // Si el back retorna un updatedMesh, actualiza también la malla
-    if (data.updatedMesh) {
+    // 1. Si el back devolvio mesh actualizado, repintamos
+    if(updateMesh) {
       roadLayer.clearLayers();
-      roadLayer.addData(data.updatedMesh);
+      roadLayer.addData(updateMesh);
       map.fitBounds(roadLayer.getBounds());
     }
+
+    // 2. Pintar los puntos sobre la capa
+    pointsLayer.clearLayers();
+    points.forEach(pt => {
+      L.circleMarker([pt.lat, pt.lng], {
+        radius: 5,
+        color: '1E90FF',
+        fillColor: '#1E90FF',
+        fillOpacity: 0.7,
+        weight: 1,
+        interactive: true
+      })
+      .bindPopup(`ID: ${pt.id}`)
+      .addTo(pointsLayer);
+    });
+    
   } catch (err) {
-    console.error(err);
+    console.erro('uploadPoints error: ' + err);
     alert('Error cargando los puntos: ' + err.message);
   }
 }
